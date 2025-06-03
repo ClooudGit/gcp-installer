@@ -4,7 +4,7 @@ One-click deployment for integrating Google Cloud Monitoring with Clooud.
 
 ## Quick Deploy
 
-[![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://console.cloud.google.com/cloudshell/open?git_repo=https://github.com/ClooudGit/gcp-monitoring-integration&cloudshell_print=instructions.txt&cloudshell_open_in_editor=deploy.sh)
+[![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://console.cloud.google.com/cloudshell/open?git_repo=https://github.com/ClooudGit/gcp-installer&cloudshell_print=instructions.txt)
 
 ## What This Does
 
