@@ -3,6 +3,7 @@
 
 set -e
 
+clear
 echo "╔══════════════════════════════════════════════════╗"
 echo "║     Clooud Monitoring Integration Setup          ║"
 echo "╚══════════════════════════════════════════════════╝"
@@ -14,56 +15,59 @@ if ! command -v gcloud &> /dev/null; then
     exit 1
 fi
 
-# Get current project
-CURRENT_PROJECT=$(gcloud config get-value project 2>/dev/null)
-if [ -z "$CURRENT_PROJECT" ]; then
-    echo "❌ No GCP project is set. Please run 'gcloud config set project PROJECT_ID' first."
-    exit 1
+# Get current user
+CURRENT_USER=$(gcloud config get-value account 2>/dev/null)
+if [ -z "$CURRENT_USER" ]; then
+    echo "❌ Not logged in to GCP. Running 'gcloud auth login'..."
+    gcloud auth login
 fi
 
-echo "📋 Current Project: $CURRENT_PROJECT"
+echo "👤 Logged in as: $CURRENT_USER"
+echo
+
+# Project selection
+CURRENT_PROJECT=$(gcloud config get-value project 2>/dev/null)
+if [ -n "$CURRENT_PROJECT" ]; then
+    echo "Current project: $CURRENT_PROJECT"
+    read -p "Use this project? (Y/n): " USE_CURRENT
+    if [[ ! "$USE_CURRENT" =~ ^[Nn]$ ]]; then
+        PROJECT_ID=$CURRENT_PROJECT
+    fi
+fi
+
+if [ -z "$PROJECT_ID" ]; then
+    # List available projects
+    echo "Available projects:"
+    gcloud projects list --format="table(projectId,name)"
+    echo
+    read -p "Enter the Project ID: " PROJECT_ID
+    gcloud config set project $PROJECT_ID
+fi
+
+echo
+echo "📋 Using Project: $PROJECT_ID"
 echo
 
 # Prompt for required parameters
-read -p "Enter your Clooud Team ID: " TEAM_ID
-if [ -z "$TEAM_ID" ]; then
-    echo "❌ Team ID is required"
-    exit 1
-fi
-
-read -p "Enter your Clooud User ID: " USER_ID
-if [ -z "$USER_ID" ]; then
-    echo "❌ User ID is required"
-    exit 1
-fi
-
-# Select environment
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "Please enter your Clooud credentials"
+echo "You can find these in your Clooud dashboard"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo
-echo "Select environment:"
-echo "1) Production (api.clooud.com)"
-echo "2) Test (test-api.clooud.com)"
-echo "3) Development (ngrok)"
-read -p "Enter choice [1-3]: " ENV_CHOICE
 
-case $ENV_CHOICE in
-    1)
-        WEBHOOK_URL="https://api.clooud.com/api/webhooks/gcp/alarm"
-        ENV_NAME="prod"
-        ;;
-    2)
-        WEBHOOK_URL="https://test-api.clooud.com/api/webhooks/gcp/alarm"
-        ENV_NAME="test"
-        ;;
-    3)
-        WEBHOOK_URL="https://informed-sunfish-communal.ngrok-free.app/api/webhooks/gcp/alarm"
-        ENV_NAME="dev"
-        ;;
-    *)
-        echo "❌ Invalid choice"
-        exit 1
-        ;;
-esac
+read -p "Clooud Team ID: " TEAM_ID
+while [ -z "$TEAM_ID" ]; do
+    echo "❌ Team ID cannot be empty"
+    read -p "Clooud Team ID: " TEAM_ID
+done
 
+read -p "Clooud User ID: " USER_ID
+while [ -z "$USER_ID" ]; do
+    echo "❌ User ID cannot be empty"
+    read -p "Clooud User ID: " USER_ID
+done
+
+WEBHOOK_URL="https://api.clooud.com/api/webhooks/gcp/alarm"
 DEPLOYMENT_NAME="clooud-monitoring-${TEAM_ID}"
 
 # Create config file
@@ -78,31 +82,56 @@ resources:
     teamId: "${TEAM_ID}"
     userId: "${USER_ID}"
     webhookUrl: "${WEBHOOK_URL}"
-    environment: "${ENV_NAME}"
 EOF
 
 echo
-echo "🔧 Enabling required APIs..."
-gcloud services enable deploymentmanager.googleapis.com
-gcloud services enable monitoring.googleapis.com
-gcloud services enable pubsub.googleapis.com
-gcloud services enable iam.googleapis.com
-gcloud services enable cloudresourcemanager.googleapis.com
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "🔧 Preparing your GCP project..."
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "Enabling required APIs..."
+
+# Enable APIs one by one with progress
+apis=(
+    "deploymentmanager.googleapis.com"
+    "monitoring.googleapis.com"  
+    "pubsub.googleapis.com"
+    "iam.googleapis.com"
+    "cloudresourcemanager.googleapis.com"
+)
+
+for api in "${apis[@]}"; do
+    echo -n "  - Enabling $api... "
+    if gcloud services enable $api --quiet 2>/dev/null; then
+        echo "✓"
+    else
+        echo "⚠️  (may already be enabled)"
+    fi
+done
 
 echo
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "🚀 Deploying Clooud monitoring integration..."
-if gcloud deployment-manager deployments create ${DEPLOYMENT_NAME} --config deployment-config.yaml; then
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+if gcloud deployment-manager deployments create ${DEPLOYMENT_NAME} --config deployment-config.yaml --quiet; then
     echo
-    echo "✅ Deployment successful!"
+    echo "✅ SUCCESS! Deployment completed."
     echo
-    echo "📊 Deployment Details:"
-    gcloud deployment-manager deployments describe ${DEPLOYMENT_NAME} --format="value(outputs)"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "📊 What was created:"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "✓ Service Account: clooud-monitoring-${TEAM_ID}@${PROJECT_ID}.iam.gserviceaccount.com"
+    echo "✓ Pub/Sub Topic: ${DEPLOYMENT_NAME}-clooud-alarms"  
+    echo "✓ Webhook Subscription: ${DEPLOYMENT_NAME}-webhook-push"
+    echo "✓ Notification Channel: Clooud Monitoring Notifications"
     echo
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "🎯 Next Steps:"
-    echo "1. Go to Cloud Monitoring in the GCP Console"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "1. Go to Cloud Monitoring: https://console.cloud.google.com/monitoring/alerting/policies?project=${PROJECT_ID}"
     echo "2. Create or edit an alerting policy"
-    echo "3. In the notification channel section, select 'Clooud Monitoring Notifications'"
-    echo "4. Save your alerting policy"
+    echo "3. In 'Notifications', add 'Clooud Monitoring Notifications'"
+    echo "4. Save your policy"
     echo
     echo "Your alerts will now be sent to Clooud! 🎉"
 else
