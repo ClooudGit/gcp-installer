@@ -1,0 +1,22 @@
+═══════════════════════════════════════════════════════════════
+Welcome to Clooud Monitoring Integration Setup for GCP!
+═══════════════════════════════════════════════════════════════
+
+This deployment will create the following resources in your project:
+✓ Service Account for Clooud to access monitoring data
+✓ Pub/Sub topic for receiving alerts
+✓ Webhook subscription to send alerts to Clooud
+✓ Monitoring notification channel
+✓ All necessary IAM permissions
+
+Prerequisites:
+- You need Owner or Editor role on your GCP project
+- You need your Clooud Team ID and User ID
+
+To start the deployment, run:
+    chmod +x deploy.sh
+    ./deploy.sh
+
+The script will guide you through the setup process.
+
+For support, visit: https://docs.clooud.com/gcp-integration

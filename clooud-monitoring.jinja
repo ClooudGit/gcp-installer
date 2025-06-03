@@ -1,0 +1,82 @@
+{# clooud-monitoring.jinja #}
+{% set PROJECT = env['project'] %}
+{% set DEPLOYMENT = env['deployment'] %}
+
+resources:
+# Service Account for Clooud monitoring
+- name: {{ DEPLOYMENT }}-monitoring-sa
+  type: iam.v1.serviceAccount
+  properties:
+    accountId: clooud-monitoring-{{ properties['teamId'] }}
+    displayName: Clooud Monitoring Service Account
+    description: Service account for Clooud monitoring platform integration
+
+# Pub/Sub Topic for alarm notifications  
+- name: {{ DEPLOYMENT }}-alarm-topic
+  type: pubsub.v1.topic
+  properties:
+    topic: {{ DEPLOYMENT }}-clooud-alarms
+    labels:
+      service: clooud
+      team_id: {{ properties['teamId'] }}
+      user_id: {{ properties['userId'] }}
+
+# Pub/Sub Subscription with push to webhook
+- name: {{ DEPLOYMENT }}-webhook-subscription
+  type: pubsub.v1.subscription
+  properties:
+    subscription: {{ DEPLOYMENT }}-webhook-push
+    topic: $(ref.{{ DEPLOYMENT }}-alarm-topic.name)
+    pushConfig:
+      pushEndpoint: {{ properties['webhookUrl'] }}
+      oidcToken:
+        serviceAccountEmail: $(ref.{{ DEPLOYMENT }}-monitoring-sa.email)
+    expirationPolicy:
+      ttl: ""
+    retryPolicy:
+      minimumBackoff: 10s
+      maximumBackoff: 600s
+
+# IAM bindings for monitoring permissions
+{% for role in ['roles/monitoring.viewer', 'roles/logging.viewer', 'roles/compute.viewer', 'roles/iam.securityReviewer'] %}
+- name: {{ DEPLOYMENT }}-iam-{{ loop.index }}
+  type: gcp-types/cloudresourcemanager-v1:virtual.projects.iamMemberBinding
+  properties:
+    resource: {{ PROJECT }}
+    role: {{ role }}
+    member: serviceAccount:$(ref.{{ DEPLOYMENT }}-monitoring-sa.email)
+{% endfor %}
+
+# Allow service account to create tokens for itself
+- name: {{ DEPLOYMENT }}-sa-token-creator
+  type: gcp-types/iam-v1:projects.serviceAccounts:setIamPolicy
+  properties:
+    resource: $(ref.{{ DEPLOYMENT }}-monitoring-sa.name)
+    policy:
+      bindings:
+      - role: roles/iam.serviceAccountTokenCreator
+        members:
+        - serviceAccount:$(ref.{{ DEPLOYMENT }}-monitoring-sa.email)
+
+# Notification channel for Cloud Monitoring
+- name: {{ DEPLOYMENT }}-notification-channel
+  type: gcp-types/monitoring-v3:projects.notificationChannels
+  properties:
+    parent: projects/{{ PROJECT }}
+    type: pubsub
+    displayName: Clooud Monitoring Notifications
+    labels:
+      topic: projects/{{ PROJECT }}/topics/{{ DEPLOYMENT }}-clooud-alarms
+    userLabels:
+      service: clooud
+      team_id: {{ properties['teamId'] }}
+
+outputs:
+- name: serviceAccountEmail
+  value: $(ref.{{ DEPLOYMENT }}-monitoring-sa.email)
+- name: topicName
+  value: $(ref.{{ DEPLOYMENT }}-alarm-topic.name)
+- name: notificationChannelName
+  value: $(ref.{{ DEPLOYMENT }}-notification-channel.name)
+- name: integrationStatus
+  value: Integration complete! Configure your Cloud Monitoring alerts to use the notification channel.
